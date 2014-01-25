@@ -1,11 +1,30 @@
 #!/usr/bin/env ruby
 # coding: utf-8
+
 require 'uri'
 require 'net/https'
 require 'json'
 require 'date'
 require 'rainbow/ext/string'
 require 'pp'
+require 'text-table'
+
+SUNDAY = 0
+SATURDAY = 6
+INDICATORS = {
+  :lv0 => '.'.color('#555555').background(:black),
+  :lv1 => 'o'.color('#d6e685').background(:black),
+  :lv2 => 'o'.color("#8cc665").background(:black),
+  :lv3 => 'O'.color("#44a340").background(:black),
+  :lv4 => '@'.color("#1e6823").background(:black),
+}
+REPLACE_TABLE = {
+  '0' => INDICATORS[:lv0],
+  '1' => INDICATORS[:lv1],
+  '2' => INDICATORS[:lv2],
+  '3' => INDICATORS[:lv3],
+  '4' => INDICATORS[:lv4],
+}
 
 def get(url)
   uri = URI.parse(url)
@@ -19,104 +38,125 @@ def get(url)
   JSON.parse(response.body)
 end
 
-calendar_data = get("https://github.com/users/luckypool/contributions_calendar_data")
+def convert_to_indicator_level(contribution)
+  return '0' if contribution <= 0
+  return '1' if contribution.between?(1, 4)
+  return '2' if contribution.between?(5, 8)
+  return '3' if contribution.between?(9, 12)
+  return '4'
+end
 
-toal = calendar_data.map{ |data| data[1] }.reduce(&:+)
-
-parsed_data = calendar_data.map do |data|
-  date = Date.parse(data[0])
-  {
-    :month => date.month,
-    :wday => date.wday,
-    :contributions => data[1]
+def parse_calendar_data(calendar_data)
+  return calendar_data.map{|data|
+    date = Date.parse(data.first)
+    {
+      :month => date.strftime('%b'),
+      :wday => date.wday,
+      :contribution => data[1]
+    }
   }
 end
 
-cal = [[]]
-while parsed_data[0][:wday] != 0 do
-  data = parsed_data.shift
-  cal[0].push(data[:contributions])
-end
+def generate_calendar_matrix(raw)
+  cal = [[]]
+  parsed_data = raw.clone
 
-(2..(8-cal[0].length)).to_a.each do
-  cal[0].unshift(nil)
-end
-cal[0].unshift(parsed_data[0][:month])
+  cal.first.push(parsed_data.first[:month])
+  wday = parsed_data.first[:wday]
+  (1..wday).each{cal.first.push(nil)}
+  (0..(SATURDAY-wday)).to_a.each{
+    cal.first.push(convert_to_indicator_level(parsed_data.shift[:contribution]))
+  }
 
-while parsed_data.length > 0 do
-  week = []
-  week.push(data[:month])
-  (1..7).to_a.each do
-    data = parsed_data.shift
-    week.push(data[:contributions])
-    unless parsed_data.length > 0 then
-      break
-    end
-  end
-  cal.push(week)
-end
-
-(1..(8-cal[-1].length)).to_a.each do
-  cal[-1].push(nil)
-end
-
-indicator = [
-  ' .'.color('#555555').background(:black),
-  ' o'.color('#d6e685').background(:black),
-  ' o'.color("#8cc665").background(:black),
-  ' o'.color("#44a340").background(:black), #.bright.blink,
-  ' o'.color("#1e6823").background(:black) #.bright.blink
-]
-
-
-parsed_cal = cal.transpose
-
-puts ''
-
-month_row = parsed_cal.shift
-curr_month = 0
-print '     '.background(:black)
-while month_row.length > 0 do
-  month = month_row.shift
-  if month == curr_month then
-    print '  '.background(:black)
-  else
-    curr_month = month
-    print sprintf("%2d",month).color("#aaaaaa").background(:black)
-  end
-end
-puts ' '.background(:black)
-
-
-days = %w(Sun Mon Tue Wed Thr Fri Sat)
-parsed_cal.each do |row|
-  print sprintf(" %s ",days.shift).color("#aaaaaa").background(:black)
-  row.each do |contribution|
-    unless contribution then
-      print '  '.background(:black)
-    else
-      if contribution < 1 then
-        print indicator[0]
-      elsif contribution < 5 then
-        print indicator[1]
-      elsif contribution < 8 then
-        print indicator[2]
-      elsif contribution < 11 then
-        print indicator[3]
-      else
-        print indicator[4]
+  while parsed_data.length > 0 do
+    week = []
+    week.push(parsed_data.first[:month])
+    (SUNDAY..SATURDAY).to_a.each do
+      contribution = parsed_data.shift[:contribution]
+      week.push(convert_to_indicator_level(contribution))
+      unless parsed_data.length > 0 then
+        (1..week.length-(7+1)).to_a.each{week.push(nil)}
+        break
       end
     end
+    cal.push(week)
   end
-  puts ' '.background(:black)
+
+  cal.unshift(['','','M','','W','','F',''])
+  return cal.transpose
 end
 
-puts ''
-print ' less '
-indicator.each{|i| print i}
-puts ' more'
+def generate_header(row)
+  header = []
+  curr_month = 0
+  row.each do |month|
+    if month == curr_month then
+      header.last[:colspan]+=1
+    else
+      curr_month = month
+      header.push({:value=>curr_month, :colspan=>1, :align=>:left})
+    end
+  end
+  return header
+end
 
-puts ''
-puts sprintf(" Total: %s [commits/year]", toal)
+def colorize(string)
+  return string.split(//).map{|c|
+    if (c=~/[0-4]/) then
+      c.gsub(/[0-4]/, REPLACE_TABLE)
+    else
+      c(c)
+    end
+  }.join()
+end
 
-puts ''
+def c(str)
+  return str.color('#999999').background(:black)
+end
+
+def make_streak(list)
+  return list.inject([[]]){|r,v|
+    if r.last.last != 0 and v!=0 then
+      r.last << v
+    else
+      r << [v]
+    end
+    r
+  }
+end
+
+def main
+  calendar_data = get("https://github.com/users/luckypool/contributions_calendar_data")
+
+  total = calendar_data.map{|d| d[1]}.inject(:+)
+  streak = make_streak(calendar_data.map{|d| d[1]})
+  streak_max = streak.map{|v| v.length}.max
+  current_strek = streak.last.inject(:+)
+
+  parsed_data = parse_calendar_data(calendar_data)
+  cal = generate_calendar_matrix(parsed_data)
+
+  column_size = cal.first.length
+  header = generate_header(cal.shift)
+  footer = [{:value=>'Less 0 1 2 3 4 More', :colspan=>column_size, :align=>:right}]
+  cal.unshift(header)
+  cal.push(:separator)
+  cal.push(footer)
+
+  t = Text::Table.new(
+    :rows => cal,
+    :horizontal_padding    => 0,
+    :vertical_boundary     => ' ',
+    :horizontal_boundary   => ' ',
+    :boundary_intersection => ' ',
+  );
+
+  print colorize(t.to_s)
+
+  puts sprintf('-->  %d Total [Year of Contributions] ', total)
+  puts sprintf('-->  %d days [Longest Streak] ', streak_max)
+  puts sprintf('-->  %d days [Current Streak] ', current_strek)
+end
+
+main()
+
