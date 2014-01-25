@@ -1,0 +1,16 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    json (1.8.1)
+    mixlib-cli (1.4.0)
+    rainbow (2.0.0)
+    text-table (1.2.3)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  json
+  mixlib-cli
+  rainbow
+  text-table
