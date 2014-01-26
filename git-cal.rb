@@ -8,13 +8,25 @@ require 'date'
 require 'rainbow/ext/string'
 require 'pp'
 require 'text-table'
+require 'mixlib/cli'
+
+class GitCalCLI
+  include Mixlib::CLI
+
+  option :user,
+    :short => "-u USER",
+    :long  => "--user USER",
+    :required => true,
+    :description => "GitHub username"
+
+end
 
 SUNDAY = 0
 SATURDAY = 6
 INDICATORS = {
   :lv0 => '.'.color('#555555').background(:black),
   :lv1 => 'o'.color('#d6e685').background(:black),
-  :lv2 => 'o'.color("#8cc665").background(:black),
+  :lv2 => 'O'.color("#8cc665").background(:black),
   :lv3 => 'O'.color("#44a340").background(:black),
   :lv4 => '@'.color("#1e6823").background(:black),
 }
@@ -38,11 +50,11 @@ def get(url)
   JSON.parse(response.body)
 end
 
-def convert_to_indicator_level(contribution)
+def convert_to_indicator_level(contribution, max)
   return '0' if contribution <= 0
-  return '1' if contribution.between?(1, 4)
-  return '2' if contribution.between?(5, 8)
-  return '3' if contribution.between?(9, 12)
+  return '1' if contribution.between?(0, (max*0.09).to_i)
+  return '2' if contribution.between?((max*0.1).to_i, (max*0.29).to_i)
+  return '3' if contribution.between?((max*0.3).to_i, (max*0.49).to_i)
   return '4'
 end
 
@@ -57,7 +69,7 @@ def parse_calendar_data(calendar_data)
   }
 end
 
-def generate_calendar_matrix(raw)
+def generate_calendar_matrix(raw, max_contribution)
   cal = [[]]
   parsed_data = raw.clone
 
@@ -65,7 +77,7 @@ def generate_calendar_matrix(raw)
   wday = parsed_data.first[:wday]
   (1..wday).each{cal.first.push(nil)}
   (0..(SATURDAY-wday)).to_a.each{
-    cal.first.push(convert_to_indicator_level(parsed_data.shift[:contribution]))
+    cal.first.push(convert_to_indicator_level(parsed_data.shift[:contribution], max_contribution))
   }
 
   while parsed_data.length > 0 do
@@ -73,9 +85,9 @@ def generate_calendar_matrix(raw)
     week.push(parsed_data.first[:month])
     (SUNDAY..SATURDAY).to_a.each do
       contribution = parsed_data.shift[:contribution]
-      week.push(convert_to_indicator_level(contribution))
+      week.push(convert_to_indicator_level(contribution, max_contribution))
       unless parsed_data.length > 0 then
-        (1..week.length-(7+1)).to_a.each{week.push(nil)}
+        (8-week.length).times{week.push(nil)}
         break
       end
     end
@@ -87,26 +99,21 @@ def generate_calendar_matrix(raw)
 end
 
 def generate_header(row)
-  header = []
-  curr_month = 0
-  row.each do |month|
-    if month == curr_month then
+  raw_header = row.clone
+  initial = [{:value=>raw_header.shift, :colspan=>1, :align=>:left}]
+  return raw_header.inject(initial){|header, month|
+    if month == header.last[:value] then
       header.last[:colspan]+=1
     else
-      curr_month = month
-      header.push({:value=>curr_month, :colspan=>1, :align=>:left})
+      header << {:value=>month, :colspan=>1, :align=>:left}
     end
-  end
-  return header
+    header
+  }
 end
 
 def colorize(string)
-  return string.split(//).map{|c|
-    if (c=~/[0-4]/) then
-      c.gsub(/[0-4]/, REPLACE_TABLE)
-    else
-      c(c)
-    end
+  return string.chars.map{|c|
+    c=~/[0-4]/ ? c.gsub(/[0-4]/, REPLACE_TABLE) : c(c)
   }.join()
 end
 
@@ -126,19 +133,22 @@ def make_streak(list)
 end
 
 def main
-  calendar_data = get("https://github.com/users/luckypool/contributions_calendar_data")
+  cli = GitCalCLI.new()
+  cli.parse_options
+  calendar_data = get("https://github.com/users/" << cli.config[:user] << "/contributions_calendar_data")
 
+  max_contribution = calendar_data.map{|d| d[1]}.max
   total = calendar_data.map{|d| d[1]}.inject(:+)
   streak = make_streak(calendar_data.map{|d| d[1]})
-  streak_max = streak.map{|v| v.length}.max
+  streak_max = streak.map{|v| v.first==0 ? 0 : v.length}.max
   current_strek = streak.last.inject(:+)
 
   parsed_data = parse_calendar_data(calendar_data)
-  cal = generate_calendar_matrix(parsed_data)
+  cal = generate_calendar_matrix(parsed_data, max_contribution)
 
   column_size = cal.first.length
   header = generate_header(cal.shift)
-  footer = [{:value=>'Less 0 1 2 3 4 More', :colspan=>column_size, :align=>:right}]
+  footer = [{:value=>'Less  0 1 2 3 4  More', :colspan=>column_size, :align=>:right}]
   cal.unshift(header)
   cal.push(:separator)
   cal.push(footer)
@@ -149,13 +159,20 @@ def main
     :vertical_boundary     => ' ',
     :horizontal_boundary   => ' ',
     :boundary_intersection => ' ',
-  );
+  )
 
-  print colorize(t.to_s)
+  table_string = colorize(t.to_s)
+  print table_string
 
-  puts sprintf('-->  %d Total [Year of Contributions] ', total)
-  puts sprintf('-->  %d days [Longest Streak] ', streak_max)
-  puts sprintf('-->  %d days [Current Streak] ', current_strek)
+  t.rows << [total.to_s<<' Total', streak_max.to_s<<' days', current_strek.to_s<<' days'].map{|v|
+    {:value => v, :colspan => column_size/3, :align => :center}
+  }
+  t.rows.last.last[:colspan]+=column_size%3
+  t.rows << ['Year of Contributions', 'Longest Streak', 'Current Streak'].map{|v|
+    {:value => v, :colspan => column_size/3, :align => :center}
+  }
+  t.rows.last.last[:colspan]+=column_size%3
+  -3.upto(-1){|i| print c(t.to_s.lines[i]) }
 end
 
 main()
