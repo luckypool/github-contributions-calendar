@@ -52,9 +52,9 @@ end
 
 def convert_to_indicator_level(contribution, max)
   return '0' if contribution <= 0
-  return '1' if contribution.between?(0, (max*0.09).to_i)
-  return '2' if contribution.between?((max*0.1).to_i, (max*0.29).to_i)
-  return '3' if contribution.between?((max*0.3).to_i, (max*0.49).to_i)
+  return '1' if contribution.between?(0, (max*0.24).to_i)
+  return '2' if contribution.between?((max*0.25).to_i, (max*0.36).to_i)
+  return '3' if contribution.between?((max*0.37).to_i, (max*0.50).to_i)
   return '4'
 end
 
