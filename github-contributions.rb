@@ -141,7 +141,7 @@ def main
   total = calendar_data.map{|d| d[1]}.inject(:+)
   streak = make_streak(calendar_data.map{|d| d[1]})
   streak_max = streak.map{|v| v.first==0 ? 0 : v.length}.max
-  current_strek = streak.last.inject(:+)
+  current_strek = streak.last.inject(0){|sum,v| sum += v>0 ? 1 : 0}
 
   parsed_data = parse_calendar_data(calendar_data)
   cal = generate_calendar_matrix(parsed_data, max_contribution)
