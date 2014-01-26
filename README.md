@@ -3,7 +3,7 @@ github-contributions-calendar
 
 ## About
 
-Do following command when [luckypool](https://github.com/luckypool) contributions like [this](https://raw.github.com/luckypool/github-contributions-calendar/master/image/github-capture.png), 
+Do following command when [luckypool](https://github.com/luckypool) contributions like [this](https://dl.dropboxusercontent.com/u/1971404/images/github-capture.png), 
 
 ```
 bundle exec ruby github-contributions.rb -u luckypool
@@ -11,7 +11,7 @@ bundle exec ruby github-contributions.rb -u luckypool
 
 result:
 
-![result](https://raw.github.com/luckypool/github-contributions-calendar/master/image/result-capture.png)
+![result](https://dl.dropboxusercontent.com/u/1971404/images/result-capture.png)
 
 
 ## Run options
