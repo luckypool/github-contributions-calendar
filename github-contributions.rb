@@ -75,8 +75,8 @@ def generate_calendar_matrix(raw, max_contribution)
 
   cal.first.push(parsed_data.first[:month])
   wday = parsed_data.first[:wday]
-  (1..wday).each{cal.first.push(nil)}
-  (0..(SATURDAY-wday)).to_a.each{
+  1.upto(wday).each{cal.first.push(nil)}
+  0.upto(SATURDAY-wday).each{
     cal.first.push(convert_to_indicator_level(parsed_data.shift[:contribution], max_contribution))
   }
 
@@ -112,9 +112,7 @@ def generate_header(row)
 end
 
 def colorize(string)
-  return string.chars.map{|c|
-    c=~/[0-4]/ ? c.gsub(/[0-4]/, REPLACE_TABLE) : c(c)
-  }.join()
+  return string.chars.map{|c| c=~/[0-4]/ ? c.gsub(/[0-4]/, REPLACE_TABLE) : c(c) }.join()
 end
 
 def c(str)
@@ -122,7 +120,8 @@ def c(str)
 end
 
 def make_streak(list)
-  return list.inject([[]]){|r,v|
+  l = list.clone
+  return l.inject([[l.shift]]){|r,v|
     if r.last.last != 0 and v!=0 then
       r.last << v
     else
